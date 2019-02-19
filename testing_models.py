@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from ml_models import LinearAggregator
+from ml_models import MultipleLayerAggregator
 from loader import Loader
 import time
 from scipy import stats
@@ -8,43 +9,110 @@ from scipy import stats
 ibes = Loader.load_ibes_with_feature(reset=False)
 
 
+
 feature_mat = np.load(file='data/int_out/features_mat.npy')
 values_mat = np.load(file='data/int_out/values_mat.npy')
 actual_mat = np.load(file='data/int_out/actual_mat.npy')
 sol_mat = np.load(file='data/int_out/sol_mat.npy')
 
-model = LinearAggregator(input_size=13, nb_pred_standing=15, rate_of_saving=1,name='m1_fullSampleLong_abs_adam_01')
-
-model.load()
-w=model.W.eval(model.sess)
-w=np.abs(w)
-w=w/np.sum(w)
-feat_name = Loader.feature_to_use
-f_imp =pd.DataFrame(index=np.array(feat_name),data=w.reshape(-1,1))
-f_imp.sort_values(0)
-
-# converting it to float and removing nan
-values_mat =values_mat.astype(np.float32)
-feature_mat = feature_mat.astype(np.float32)
-actual_mat = actual_mat.astype(np.float32)
-values_mat = np.nan_to_num(values_mat)
 feature_mat = np.nan_to_num(feature_mat)
+values_mat = np.nan_to_num(values_mat)
+actual_mat = np.nan_to_num(actual_mat)
+sol_mat = np.nan_to_num(sol_mat)
+
+actual_mat = actual_mat.astype(np.float32)
+feature_mat = feature_mat.astype(np.float32)
+values_mat = values_mat.astype(np.float32)
+
+
+feature_mat = np.nan_to_num(feature_mat)
+values_mat = np.nan_to_num(values_mat)
 actual_mat = np.nan_to_num(actual_mat)
 
-pred = model.pred_simple(test_actual=actual_mat, test_x=feature_mat, test_values=values_mat)
+# adding the standardized input
+m = np.mean(feature_mat, axis=2)
+s = np.std(feature_mat, axis=2)
+s[s == 0] = 1  # avoid divid by 0
+m = m.reshape(feature_mat.shape[0], feature_mat.shape[1], 1)
+m = m.repeat(feature_mat.shape[2], axis=2)
+s = s.reshape(feature_mat.shape[0], feature_mat.shape[1], 1)
+s = s.repeat(feature_mat.shape[2], axis=2)
+
+reg_input = (feature_mat - m) / s
+reg_input.shape
+feature_mat.shape
+feature_mat = np.concatenate((feature_mat, reg_input), axis=2)
+
+feature_mat.shape
+
+
+
+
+
+
+# model = LinearAggregator(start_rate=1, input_size=40, nb_pred_standing=15, rate_of_saving=1, name='linear_std_data',summary_type="real_data")
+model = MultipleLayerAggregator(start_rate=1,input_size=40, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,500,500,500],
+                                name='l500t4_relu_all_rateOne_batch500',summary_type="real_data")
+# model = MultipleLayerAggregator(start_rate=1,input_size=13, nb_pred_standing=15, rate_of_saving=1,layer_width=[500], name='layer500_startRate1_batch',summary_type="real_data")
+# model.sess.close()
+# model.initialise()
+model.load()
+# w=model.W.eval(model.sess)
+# w=np.abs(w)
+# w=w/np.sum(w)
+# feat_name = Loader.feature
+# feat_name = feat_name+[x + "_standardized" for x in feat_name]
+# f_imp =pd.DataFrame(index=np.array(feat_name),data=w.reshape(-1,1))
+# f_imp.sort_values(0)
+pred = []
+b_size = 100000
+round_max= np.ceil(len(actual_mat)/b_size)
+round_max = int(round_max)
+for i in range(round_max):
+    if i==round_max-1:
+        l=(b_size*round_max)-len(actual_mat)
+        l=int(l)
+    else:
+        l=0
+
+
+    p = model.pred_simple(test_actual=actual_mat[(i*b_size):((i+1)*b_size-l)].reshape(b_size-l),
+                          test_x=feature_mat[(i*b_size):((i+1)*b_size-l),:,:].reshape((b_size-l,15,40)),
+                          test_values=values_mat[(i*b_size):((i+1)*b_size-l),:].reshape(b_size-l,15))
+    print(i)
+    pred.append(p)
+len(pred)
+p=pred
+len(p)
+p[0]
+# pred = p
+f = np.array([])
+for p in pred:
+    f = np.append(f,p)
+# pred = model.pred_simple(test_actual=actual_mat, test_x=feature_mat, test_values=values_mat)
 
 
 
 df = pd.DataFrame(sol_mat,columns=['tic','andate','tgdate','consensus_mean','consensus_median','id'])
-df['pred'] = pred
+
+
+
+df['pred'] = f
 df['actual']=actual_mat
 df['andate'] = pd.to_datetime(df['andate'], format='%Y%m%d')
 df['tgdate'] = pd.to_datetime(df['tgdate'], format='%Y%m%d')
 
 df['pred_error'] = (df['pred']-df['actual']).abs()
-df['min_error'] = df.groupby(['id'])['pred_error'].transform('min')
+df['c_mean_error'] = (df['consensus_mean']-df['actual']).abs()
+df['min_error'] = df.groupby(['id'])['pred_error'].transform('max')
+df.iloc[:,3:] = df.iloc[:,3:].astype(np.float32)
+df.describe()
+df.head()
+
+df =  df[df['actual']<=df['actual'].quantile(0.99)]
 
 
+df = df[~pd.isnull(df['actual'])]
 err_mean_sqr = np.sqrt(np.sum((df['consensus_mean']-df['actual'])**2))/(sum(~pd.isnull(df['actual'])))
 err_median_sqr = np.sqrt(np.sum((df['consensus_median']-df['actual'])**2))/(sum(~pd.isnull(df['actual'])))
 err_model_sqr = np.sqrt(np.sum((df['pred']-df['actual'])**2))/(sum(~pd.isnull(df['actual'])))

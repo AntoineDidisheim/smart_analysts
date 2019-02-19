@@ -234,7 +234,45 @@ class Loader:
         if reset:
             # General rule _s suffix means standardised (usually by tic and tgdate)
             ibes = Loader.load_ibes_long(reset=False)
+
+
+            ibes.head()
+            # loading the translater saved before
+            permno_tic_translate = pd.read_csv('data/permno_tic.csv')
+            permno_tic_translate = permno_tic_translate[['ticker','permno']]
+            ibes = ibes.rename(columns={'TICKER':'ticker'})
+            # merging to keep only the one which were kept as a match with crsp
+            ibes=ibes.merge(permno_tic_translate,on='ticker',how='inner')
+            # load and clean crsp data
+            ret = pd.read_csv('data/ibes_crsp.csv')
+            ret.head()
+            ret = ret.rename(columns={'PRC':'price','VOL':'vol','PERMNO':'permno','RET':'ret','NUMTRD':'numtrd'})
+            ret['date'] = pd.to_datetime(ret['date'],format='%Y%m%d')
+            ret['ret'] =pd.to_numeric(ret['ret'],'coerc').fillna(0)
+            ret = ret.sort_values(['permno','date'])
+            ret['ret5']=ret.groupby('permno')['ret'].rolling(5).mean().reset_index()['ret']
+            ret['ret10']=ret.groupby('permno')['ret'].rolling(10).mean().reset_index()['ret']
+            ret['ret30']=ret.groupby('permno')['ret'].rolling(30).mean().reset_index()['ret']
+            ret['ret60'] = ret.groupby('permno')['ret'].rolling(60).mean().reset_index()['ret']
+
+            # merge it
+            ret.head()
+            ret.permno = ret.permno.astype('int64')
+            ret=ret.rename(columns={'date':'andate'})
+
+            ibes[['permno','andate']].dtypes
+            ret.head()
+            ibes= ibes.merge(ret,how='inner',on=['permno','andate'])
+
             ibes = ibes.sort_values(['tic', 'tgdate', 'andate'])
+
+            # standardizing value and target value by price
+            ibes['value'] = ibes['value']/ibes['price']
+            ibes['actual'] = ibes['actual']/ibes['price']
+
+
+
+
 
             # creating the consensus measure for comparaisons
             ibes['consensus_mean'] = ibes.groupby(['tic', 'tgdate'])['value'].apply(lambda x: x.expanding().mean())
@@ -258,6 +296,18 @@ class Loader:
                 'shift')
             ibes['analyst_mean_error_s_L2'] = ibes.groupby(['tic', 'analyst'])['analyst_mean_error_s'].transform(
                 'shift', 2)
+
+            ibes['analyst_std_error_s_L1'] = ibes.groupby(['tic', 'analyst'])['std_error'].transform(
+                'shift')
+
+
+            # herding and bold behavior plus abs dist to consensus
+
+            ibes['analyst_lag_value'] = ibes.groupby(['tic','analyst','tgdate'])['value'].transform('shift')
+            ibes['bold'] = 1 * ((ibes['analyst_lag_value'] - ibes['consensus_mean']) > (ibes['value'] - ibes['consensus_mean']))
+            ibes['herd'] = 1 * ((ibes['analyst_lag_value'] - ibes['consensus_mean']) < (ibes['value'] - ibes['consensus_mean']))
+            ibes['abs_dist_to_consensus'] = (ibes['value']-ibes['consensus_mean']).abs()
+
 
             # the sign error
             ibes['error_signed'] = (ibes['actual'] - ibes['value'])
@@ -284,7 +334,7 @@ class Loader:
             ibes = ibes[ibes['days_to_actual'] > 0]
 
             # firm experience so we first create the start date observed and then the experience.
-            ibes['first_forecast_date_pre_tic'] = ibes.groupby(['tic', 'analyst'])['andate'].transform('min')
+            ibes['first_forecast_date_pre_tic'] = ibes.groupby(['tic', 'analyst'])['andate'].transform('min') # per tic, not pre tic...
             ibes['first_forecast_date_total'] = ibes.groupby(['analyst'])['andate'].transform('min')
 
             ibes['exp_firm'] = (ibes['andate'] - ibes['first_forecast_date_pre_tic']).dt.days
@@ -312,13 +362,16 @@ class Loader:
 
 
     feature = ['analyst_mean_error_s_L1', 'analyst_mean_error_s_L2', 'error_signed_mean_L1',
-            'error_signed_mean_L2', 'nb_pred_total',
+            'error_signed_mean_L2', 'nb_pred_total','analyst_std_error_s_L1',
             'nb_firm_followed_by_analyst', 'nb_firm_pred_by_analyst', 'nb_pred_so_far', 'days_to_actual',
             'nb_analyst_following_firm',
-            'exp_firm', 'exp_tot', 'exp_firm_s', 'exp_tot_s', 'exp_tot_med', 'exp_firm_med']
+            'exp_firm', 'exp_tot', 'exp_firm_s', 'exp_tot_s', 'exp_tot_med', 'exp_firm_med',
+               'bold', 'herd', 'abs_dist_to_consensus',
+               'ret','ret5','ret10','ret30','ret60']
     feature_to_use = ['analyst_mean_error_s_L1', 'analyst_mean_error_s_L2', 'error_signed_mean_L1',
                    'error_signed_mean_L2', 'nb_pred_total',
                    'nb_firm_followed_by_analyst', 'nb_firm_pred_by_analyst', 'nb_pred_so_far', 'days_to_actual',
                    'nb_analyst_following_firm',
-                   'exp_tot_s', 'exp_tot_med', 'exp_firm_med']
+                   'exp_tot_s', 'exp_tot_med', 'exp_firm_med','analyst_std_error_s_L1',
+                    'bold', 'herd', 'abs_dist_to_consensus']
 

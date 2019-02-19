@@ -5,7 +5,8 @@ from loader import Loader
 import time
 
 ibes = Loader.load_ibes_with_feature(reset=False)
-feat_name = Loader.feature_to_use
+feat_name = Loader.feature
+ibes  = ibes[ibes['actual']<=ibes['actual'].quantile(0.99)]
 
 ibes.head()
 # ibes['consensus_mean']
@@ -44,9 +45,10 @@ for k in range(5,200):
            .apply(lambda x: x.values.tolist())
            .tolist())
     mat = np.array(mat)
+    mat.shape
 
     # first we remove the last 6 ones that are for comparing consenus and solutions
-    mat_sol = mat[:,:,15:]
+    mat_sol = mat[:,:,(len(feat_name)+2):]
     # we take the last one only as it is the most recent (i.e., the one used for the prediciton)
     mat_sol = mat_sol[:,-1,:]
     mat_sol.shape
@@ -87,3 +89,5 @@ np.save(file='data/int_out/sol_mat',arr=all_sol)
 ibes.shape
 
 ibes[ibes.pred_number>5].shape
+
+
