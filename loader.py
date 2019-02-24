@@ -234,9 +234,9 @@ class Loader:
         if reset:
             # General rule _s suffix means standardised (usually by tic and tgdate)
             ibes = Loader.load_ibes_long(reset=False)
+            ibes = ibes[~pd.isnull(ibes['actual'])]
 
 
-            ibes.head()
             # loading the translater saved before
             permno_tic_translate = pd.read_csv('data/permno_tic.csv')
             permno_tic_translate = permno_tic_translate[['ticker','permno']]
@@ -256,22 +256,18 @@ class Loader:
             ret['ret60'] = ret.groupby('permno')['ret'].rolling(60).mean().reset_index()['ret']
 
             # merge it
-            ret.head()
             ret.permno = ret.permno.astype('int64')
             ret=ret.rename(columns={'date':'andate'})
 
             ibes[['permno','andate']].dtypes
-            ret.head()
             ibes= ibes.merge(ret,how='inner',on=['permno','andate'])
 
             ibes = ibes.sort_values(['tic', 'tgdate', 'andate'])
 
-            # standardizing value and target value by price
+
+            # standardizing value and target value by price at time of recommendation!
             ibes['value'] = ibes['value']/ibes['price']
             ibes['actual'] = ibes['actual']/ibes['price']
-
-
-
 
 
             # creating the consensus measure for comparaisons
@@ -292,21 +288,33 @@ class Loader:
             ibes['std_error'] = ibes.groupby(['tgdate', 'tic'])['error'].transform('std')
             ibes['error_s'] = ((ibes['error'] - ibes['mean_error']) / (ibes['std_error'])).clip(-5,5)
             ibes['analyst_mean_error_s'] = ibes.groupby(['tic', 'analyst', 'tgdate'])['error_s'].transform('mean')
+            ibes['analyst_mean_error'] = ibes.groupby(['tic', 'analyst', 'tgdate'])['error'].transform('mean')
             ibes['analyst_mean_error_s_L1'] = ibes.groupby(['tic', 'analyst'])['analyst_mean_error_s'].transform(
+                'shift')
+            ibes['analyst_mean_error_L1'] = ibes.groupby(['tic', 'analyst'])['analyst_mean_error'].transform(
                 'shift')
             ibes['analyst_mean_error_s_L2'] = ibes.groupby(['tic', 'analyst'])['analyst_mean_error_s'].transform(
                 'shift', 2)
-
+            ibes['analyst_mean_error_L2'] = ibes.groupby(['tic', 'analyst'])['analyst_mean_error'].transform(
+                'shift', 2)
             ibes['analyst_std_error_s_L1'] = ibes.groupby(['tic', 'analyst'])['std_error'].transform(
                 'shift')
 
 
             # herding and bold behavior plus abs dist to consensus
 
-            ibes['analyst_lag_value'] = ibes.groupby(['tic','analyst','tgdate'])['value'].transform('shift')
+            # ibes['analyst_lag_value'] = ibes.groupby(['tic','analyst','tgdate'])['value'].transform('shift')
+            ibes['analyst_lag_value'] = ibes.groupby(['tic','analyst'])['value'].transform('shift')
+            ibes['change'] = ibes['value']-ibes['analyst_lag_value']
+            ibes['sign_of_change'] = ibes['change'].apply(np.sign)
+            ibes['abs_change'] = ibes['change'].apply(np.abs)
+
+
+
             ibes['bold'] = 1 * ((ibes['analyst_lag_value'] - ibes['consensus_mean']) > (ibes['value'] - ibes['consensus_mean']))
             ibes['herd'] = 1 * ((ibes['analyst_lag_value'] - ibes['consensus_mean']) < (ibes['value'] - ibes['consensus_mean']))
             ibes['abs_dist_to_consensus'] = (ibes['value']-ibes['consensus_mean']).abs()
+            ibes['signed_dist_to_consensus'] = (ibes['value']-ibes['consensus_mean'])
 
 
             # the sign error
@@ -321,13 +329,14 @@ class Loader:
 
             # number of analyst who follow the firm
             ibes['nb_analyst_following_firm'] = ibes.groupby(['tgdate', 'tic'])['analyst'].transform('nunique')
-
+            ibes['nb_analyst_following_firm'] = (ibes['nb_analyst_following_firm']-ibes['nb_analyst_following_firm'].mean())/ibes['nb_analyst_following_firm'].std()
             # number of prediction already made
             ibes = ibes.sort_values(['tic', 'tgdate', 'andate'])
             ibes['nb_pred_so_far'] = ibes.groupby(['tic', 'tgdate'])['value'].apply(lambda x: x.expanding().count())
 
             # number of pred total
             ibes['nb_pred_total'] = ibes.groupby(['tic', 'tgdate'])['value'].transform('count')
+            ibes['nb_pred_total'] = (ibes['nb_pred_total']-ibes['nb_pred_total'].mean())/ibes['nb_pred_total'].std()
 
             # create the days dist betwen tgdate and andate and remove data with negative dates...
             ibes['days_to_actual'] = (ibes['tgdate'] - ibes['andate']).dt.days
@@ -353,6 +362,13 @@ class Loader:
             ibes = ibes.reset_index(drop=True)
             ibes = ibes.reset_index()
             ibes = ibes.rename(columns={'index': 'id'})
+            ibes.actual.describe()
+
+            # finaly we remove the very extreme ones!!!
+            q=ibes['actual'].quantile([0.01,0.99])
+            ibes.shape
+            ibes = ibes[ibes['actual']>=q.iloc[0]]
+            ibes = ibes[ibes['actual']<=q.iloc[1]]
 
             ibes.to_pickle('data/ibes_with_features.p')
             return ibes
@@ -362,16 +378,17 @@ class Loader:
 
 
     feature = ['analyst_mean_error_s_L1', 'analyst_mean_error_s_L2', 'error_signed_mean_L1',
+               'analyst_mean_error_L1','analyst_mean_error_L2',
             'error_signed_mean_L2', 'nb_pred_total','analyst_std_error_s_L1',
             'nb_firm_followed_by_analyst', 'nb_firm_pred_by_analyst', 'nb_pred_so_far', 'days_to_actual',
             'nb_analyst_following_firm',
             'exp_firm', 'exp_tot', 'exp_firm_s', 'exp_tot_s', 'exp_tot_med', 'exp_firm_med',
-               'bold', 'herd', 'abs_dist_to_consensus',
+               'bold', 'herd', 'abs_dist_to_consensus', 'change', 'sign_of_change','signed_dist_to_consensus',
                'ret','ret5','ret10','ret30','ret60']
-    feature_to_use = ['analyst_mean_error_s_L1', 'analyst_mean_error_s_L2', 'error_signed_mean_L1',
-                   'error_signed_mean_L2', 'nb_pred_total',
-                   'nb_firm_followed_by_analyst', 'nb_firm_pred_by_analyst', 'nb_pred_so_far', 'days_to_actual',
-                   'nb_analyst_following_firm',
-                   'exp_tot_s', 'exp_tot_med', 'exp_firm_med','analyst_std_error_s_L1',
-                    'bold', 'herd', 'abs_dist_to_consensus']
 
+    feature_to_std = ['analyst_mean_error_s_L1', 'analyst_mean_error_s_L2', 'error_signed_mean_L1',
+               'analyst_mean_error_L1','analyst_mean_error_L2',
+            'analyst_std_error_s_L1',
+            'nb_firm_followed_by_analyst', 'nb_firm_pred_by_analyst', 'nb_pred_so_far', 'days_to_actual',
+            'exp_firm', 'exp_tot', 'exp_firm_s', 'exp_tot_s',
+            'abs_dist_to_consensus', 'change','signed_dist_to_consensus','ret']

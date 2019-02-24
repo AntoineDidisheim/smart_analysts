@@ -51,8 +51,8 @@ feature_mat.shape
 
 
 # model = LinearAggregator(start_rate=1, input_size=40, nb_pred_standing=15, rate_of_saving=1, name='linear_std_data',summary_type="real_data")
-model = MultipleLayerAggregator(start_rate=1,input_size=40, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,500,500,500],
-                                name='l500t4_relu_all_rateOne_batch500',summary_type="real_data")
+model = MultipleLayerAggregator(start_rate=1,input_size=50, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,500],
+                                name='l500l500_relu_all_rate0001_batch500_',summary_type="real_data")
 # model = MultipleLayerAggregator(start_rate=1,input_size=13, nb_pred_standing=15, rate_of_saving=1,layer_width=[500], name='layer500_startRate1_batch',summary_type="real_data")
 # model.sess.close()
 # model.initialise()
@@ -74,10 +74,8 @@ for i in range(round_max):
         l=int(l)
     else:
         l=0
-
-
     p = model.pred_simple(test_actual=actual_mat[(i*b_size):((i+1)*b_size-l)].reshape(b_size-l),
-                          test_x=feature_mat[(i*b_size):((i+1)*b_size-l),:,:].reshape((b_size-l,15,40)),
+                          test_x=feature_mat[(i*b_size):((i+1)*b_size-l),:,:].reshape((b_size-l,15,50)),
                           test_values=values_mat[(i*b_size):((i+1)*b_size-l),:].reshape(b_size-l,15))
     print(i)
     pred.append(p)
@@ -109,8 +107,13 @@ df.iloc[:,3:] = df.iloc[:,3:].astype(np.float32)
 df.describe()
 df.head()
 
-df =  df[df['actual']<=df['actual'].quantile(0.99)]
+df.dtypes
+df['pred_error'].min()
 
+df[df['pred_error']==0].shape
+
+
+df =  df[df['actual']<=df['actual'].quantile(0.99)]
 
 df = df[~pd.isnull(df['actual'])]
 err_mean_sqr = np.sqrt(np.sum((df['consensus_mean']-df['actual'])**2))/(sum(~pd.isnull(df['actual'])))

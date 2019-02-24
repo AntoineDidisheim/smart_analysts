@@ -145,3 +145,25 @@ iclink['permno']=iclink['permno'].astype(int)
 iclink = iclink.drop_duplicates()
 
 iclink.to_csv('data/icilink.csv')
+
+
+
+############################# second part
+from loader import Loader
+pd.set_option('display.max_columns', 500)
+
+iclink = pd.read_csv('data/icilink.csv')
+ibes = Loader.load_ibes_long(reset=False)
+
+ibes.andate.min()
+iclink.head()
+ibes.head()
+ibes = ibes[['TICKER','fpi']].rename(columns={'TICKER':'ticker'})
+ibes = ibes.reset_index(drop=True)
+ibes = ibes.drop_duplicates()
+df = iclink.merge(ibes, how='inner',on=['ticker'])
+
+df = df[df.score==0]
+
+df.to_csv('data/permno_tic.csv')
+
