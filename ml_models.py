@@ -77,6 +77,7 @@ class LinearAggregator:
                 if self.name in x:
                     ll.append(x)
             e = max([int(x.split('.')[0].split(self.name)[1]) for x in ll])
+            print('loading from epoch -',e, '(last available)')
 
             self.saver.restore(self.sess, 'tf_models/' + self.name + str(e) + '.ckpt')
         else:
@@ -122,7 +123,7 @@ class LinearAggregator:
         # pred= self.sess.run([self.pred], feed_dict={self.x_raw: test_x, self.values: test_values})
         self.writer.add_summary(summary, epoch)
 
-        return pred, cost, abs_cost
+        return pred, abs_cost, cost
 
     def expand_input_with_batch_regularisation(self,batch_input):
         batch_input.shape
