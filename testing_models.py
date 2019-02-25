@@ -28,14 +28,17 @@ sol_mat = sol_mat[ind_test,:]
 # model_name = 'l500t4_relu_all_rate1_batch5000'
 # model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,500,500,500], name=model_name,summary_type="comuter_based")
 
-# model_name = 'linear_try_b10000_'
-# model = LinearAggregator(input_size=30, nb_pred_standing=15, rate_of_saving=1, name=model_name,summary_type="comuter_based")
 #
+# model_name = 'linear_try_b10000_'
+# model = LinearAggregator(input_size=30, nb_pred_standing=15, rate_of_saving=1, name=model_name,summary_type="comuter_based2")
+
+
+
 # model_name  = '100_sigmoid_all_rate1_batch10000_'
 # model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[100], layer_types=[tf.nn.sigmoid], name=model_name,summary_type="real_data")
 
 model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
-model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="real_data")
+model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_best")
 
 model.load()
 # w=model.W.eval(model.sess)
@@ -70,7 +73,7 @@ df.head()
 
 df.head()
 
-df=df.groupby(['andate','tic'])['consensus_mean','consensus_median','actual','pred'].min().reset_index(drop=True)
+df=df.groupby(['andate','tic'])['consensus_mean','consensus_median','actual','pred','tgdate'].min().reset_index(drop=False)
 
 
 # saving the perf_df
