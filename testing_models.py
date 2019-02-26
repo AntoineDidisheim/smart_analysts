@@ -37,8 +37,17 @@ sol_mat = sol_mat[ind_test,:]
 # model_name  = '100_sigmoid_all_rate1_batch10000_'
 # model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[100], layer_types=[tf.nn.sigmoid], name=model_name,summary_type="real_data")
 
+# model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
+# model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_best")
+
+# model_name  = 'l200l100l50t4_relu_all_rate1_batch5000_'
+# model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[200,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_try")
+
+
+
 model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
-model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_best")
+model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_try")
+
 
 model.load()
 # w=model.W.eval(model.sess)

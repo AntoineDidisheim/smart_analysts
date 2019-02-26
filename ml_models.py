@@ -250,7 +250,7 @@ class MultipleLayerAggregator(LinearAggregator):
             self.non_zero_check = tf.sign(tf.transpose(tf.reduce_sum(tf.abs(self.x_list), axis=(2, 3))), name='data_non_zero_check')
             # adding a small constant to the omegas just to avoid having something that no weights
             self.finalConstants = tf.Variable(tf.constant(0.001, shape=[15]), name='final_constant')
-            self.omega = tf.nn.relu(tf.add(tf.nn.relu(tf.multiply(tf.transpose(tf.reduce_sum(finalOutput, axis=(2))), self.non_zero_check)), self.finalConstants,
+            self.omega = tf.nn.relu(tf.add(tf.nn.relu(tf.multiply(tf.transpose(tf.reduce_sum(finalOutput, axis=(2))), self.non_zero_check)), self.finalConstants
                                 ),name='omega')
 
             # self.omega =tf.abs(
@@ -263,7 +263,7 @@ class MultipleLayerAggregator(LinearAggregator):
             self.cost = tf.losses.mean_squared_error(labels=self.actual, predictions=self.pred)
             self.cost_abs = tf.losses.absolute_difference(labels=self.actual, predictions=self.pred)
             # self.train_op = tf.train.AdamOptimizer(learning_rate=0.1).minimize(self.cost)
-            self.train_op = tf.train.GradientDescentOptimizer(start_rate).minimize(self.cost)
+            self.train_op = tf.train.GradientDescentOptimizer(start_rate).minimize(self.cost_abs)
 
         self.saver = tf.train.Saver()
         self.sess = tf.Session()
