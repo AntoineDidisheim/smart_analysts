@@ -128,6 +128,23 @@ class LinearAggregator:
 
         return pred, abs_cost, cost
 
+    def pred_on_sample_without_summary(self, test_x, test_values, test_actual, epoch):
+        """
+        :param test_x: shape (sample_size, nb_pred, number_feature)
+        :param test_values: shape (sample_size, nb_pred)
+        :param test_actual: shape (sample_size, )
+        :param epoch:
+        :return:
+        """
+        if self.with_batch_regularisation:
+            test_x = self.expand_input_with_batch_regularisation(test_x)
+        pred, cost, abs_cost = self.sess.run([self.pred, self.cost, self.cost_abs],
+                                                      feed_dict={self.x_raw: test_x, self.values: test_values, self.actual: test_actual})
+        # pred= self.sess.run([self.pred], feed_dict={self.x_raw: test_x, self.values: test_values})
+        # self.writer.add_summary(summary, epoch)
+
+        return pred, abs_cost, cost
+
 
     def get_omegas(self, input_x):
         """
@@ -249,7 +266,7 @@ class MultipleLayerAggregator(LinearAggregator):
 
             self.non_zero_check = tf.sign(tf.transpose(tf.reduce_sum(tf.abs(self.x_list), axis=(2, 3))), name='data_non_zero_check')
             # adding a small constant to the omegas just to avoid having something that no weights
-            self.finalConstants = tf.Variable(tf.constant(0.001, shape=[15]), name='final_constant')
+            self.finalConstants = tf.Variable(tf.constant(0.001, shape=[self.nb_pred_standing]), name='final_constant')
             self.omega = tf.nn.relu(tf.add(tf.nn.relu(tf.multiply(tf.transpose(tf.reduce_sum(finalOutput, axis=(2))), self.non_zero_check)), self.finalConstants
                                 ),name='omega')
 
@@ -262,7 +279,7 @@ class MultipleLayerAggregator(LinearAggregator):
         with tf.name_scope('cost_and_opt'):
             self.cost = tf.losses.mean_squared_error(labels=self.actual, predictions=self.pred)
             self.cost_abs = tf.losses.absolute_difference(labels=self.actual, predictions=self.pred)
-            # self.train_op = tf.train.AdamOptimizer(learning_rate=0.1).minimize(self.cost)
+            # self.train_op = tf.train.AdamOptimizer(learning_rate=start_rate).minimize(self.cost)
             self.train_op = tf.train.GradientDescentOptimizer(start_rate).minimize(self.cost_abs)
 
         self.saver = tf.train.Saver()

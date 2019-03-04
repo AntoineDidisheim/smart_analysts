@@ -230,6 +230,87 @@ class Loader:
         return ibes
 
     @staticmethod
+    def merge_results_df_with_price_actuals(df,reset=False, date_min=None,date_max=None, pred_std=['pred','consensus_mean','consensus_median']):
+        permno_tic_translate = pd.read_csv('data/permno_tic.csv')
+        permno_tic_translate = permno_tic_translate[['ticker', 'permno']]
+        #start by loading the big ret number with the actual
+        if reset:
+            # General rule _s suffix means standardised (usually by tic and tgdate)
+            ibes = Loader.load_ibes_long(reset=False)
+            ibes = ibes[~pd.isnull(ibes['actual'])]
+
+            # loading the translater saved before
+
+            ibes = ibes.rename(columns={'TICKER': 'ticker'})
+            # merging to keep only the one which were kept as a match with crsp
+            ibes = ibes.merge(permno_tic_translate, on='ticker', how='inner')
+            # load and clean crsp data
+            ret = pd.read_csv('data/ibes_crsp.csv')
+            ret.head()
+            ret = ret.rename(columns={'PRC': 'price', 'VOL': 'vol', 'PERMNO': 'permno', 'RET': 'ret', 'NUMTRD': 'numtrd'})
+            ret = ret.rename(columns={'date': 'andate'})
+            ret['andate'] = pd.to_datetime(ret['andate'], format='%Y%m%d')
+
+            ret['ret'] = pd.to_numeric(ret['ret'], 'coerc').fillna(0)
+
+            # merge it
+            ret.permno = ret.permno.astype('int64')
+
+            ret = ret.merge(ibes, how='left', on=['permno', 'andate'])
+            ret = ret.sort_values(['permno', 'andate'])
+
+            ret = ret[['andate', 'permno', 'actual','price']]
+            ret.to_pickle('data/ret_temp_f.p')
+        else:
+            ret = pd.read_pickle('data/ret_temp_f.p')
+
+        if date_min is not None:
+            ret = ret[ret['andate']>=date_min]
+        if date_max is not None:
+            ret = ret[ret['andate']<=date_max]
+
+
+        df = df.merge(permno_tic_translate, how='left', right_on='ticker', left_on='tic')
+        df = df[~pd.isnull(df['permno'])]
+
+        df = df.drop(columns=['actual'])
+        df = df.merge(ret, how='right', on=['permno', 'andate'])
+
+        df = df.sort_values(['permno', 'andate'])
+
+        ## adding the tg columns to have the target date for each
+        tg = df[['permno', 'tgdate']].drop_duplicates()
+        tg['tg'] = tg['tgdate']
+        tg = tg.rename(columns={'tgdate': 'andate'})
+        tg = tg[~pd.isnull(tg['tg'])]
+        tg.head()
+        df = df.merge(tg, how='outer', on=['permno', 'andate'])
+        df = df.sort_values(['permno', 'andate'])
+        df['tg'] = df.groupby(['permno'])['tg'].fillna(method='ffill')
+        df['tg'] = df.groupby(['permno'])['tg'].fillna(method='bfill')
+
+        # now we can expand the prediction by tg and permno
+        def temp_expand_function(dataframe, colname):
+            dataframe[colname] = dataframe.groupby(['permno', 'tg'])[colname].fillna(method='ffill')
+            dataframe[colname] = dataframe.groupby(['permno', 'tg'])[colname].fillna(method='bfill')
+            return dataframe
+
+        df = temp_expand_function(dataframe=df, colname='actual')
+        ret['actual'] = ret['actual'] / ret['price']
+
+        for n in pred_std:
+            df = temp_expand_function(dataframe=df, colname=n)
+            # df[n] = df.groupby(['permno', 'tg'])[n].fillna(method='ffill')
+            df[n+'_reg'] = (df[n]-df[n].mean())/df[n].std()
+            df[n+'_error'] = (df[n]-df['actual']).abs()
+
+        df = df[~pd.isnull(df[pred_std[0]])]
+        df = df[~pd.isnull(df[pred_std[0]])]
+        return df
+
+
+
+    @staticmethod
     def load_ibes_with_feature(reset = False):
         if reset:
             # General rule _s suffix means standardised (usually by tic and tgdate)

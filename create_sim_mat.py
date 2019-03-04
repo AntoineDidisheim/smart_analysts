@@ -3,11 +3,11 @@ import numpy as np
 from ml_models import LinearAggregator
 from loader import Loader
 import time
-
-perc_to_remove = 5
-for perc_to_remove in [1,2,5,10,20]:
-    print('#####################################################################starting_perc_to_remov',perc_to_remove)
-
+print("xxxx-start")
+# for perc_to_remove in [5,10,20,25,30,45,50]:
+for perc_to_remove in [50,40,30,20,10,5]:
+    # perc_to_remove=50
+    print('##################################################################### starting_perc_to_remov', perc_to_remove)
     ibes = Loader.load_ibes_with_feature(reset=False)
     feat_all = Loader.feature
     feat_std = Loader.feature_to_std
@@ -16,7 +16,7 @@ for perc_to_remove in [1,2,5,10,20]:
         if f not in feat_std:
             feat_simple.append(f)
 
-    ibes = ibes[ibes['actual'] <= ibes['actual'].quantile(0.99)]
+
 
     ibes.head()
     # ibes['consensus_mean']
@@ -30,18 +30,33 @@ for perc_to_remove in [1,2,5,10,20]:
     # saving ibes_original
     ibes_original = ibes.copy()
 
+    # adding group_id
+    ibes_original['group'] = ibes_original['tic'] + ibes_original['tgdate'].astype(str)
+    t = pd.DataFrame(ibes_original['group'].unique())
+    t = t.reset_index().rename(columns={'index': 'group_id', 0: 'group'})
+    ibes_original = ibes_original.merge(t, how='left')
 
-    for nb_sim in range(10):
+
+    for nb_sim in range(5):
         # re-initialised the ibes file
         ibes =ibes_original.copy()
-
         # remove random percentage of analyst
-        unique_analyst = ibes['analyst'].unique()
-        nb_to_remove = int(np.ceil(len(unique_analyst)*perc_to_remove/100))
-        analyst_to_remove = np.random.choice(a=unique_analyst,size=nb_to_remove)
+        # unique_analyst = ibes['analyst'].unique()
+        # nb_to_remove = int(np.ceil(len(unique_analyst)*perc_to_remove/100))
+        # analyst_to_remove = np.random.choice(a=unique_analyst,size=nb_to_remove,replace=False)
+        # ibes = ibes[~ibes['analyst'].isin(analyst_to_remove)]
+        # randomly remove rows
+        nb_to_remove = int(np.ceil(ibes.shape[0] * perc_to_remove/100))
+        rows_to_remove = np.random.choice(a=ibes.index,size = nb_to_remove,replace=False)
+        ibes = ibes[~ibes.index.isin(rows_to_remove)].reset_index(drop=True)
+
+        #update pred number
+        ibes['pred_number'] = ibes.groupby(['tic', 'tgdate']).cumcount() + 1
+        ibes['max'] = ibes.groupby(['tic', 'tgdate'])['pred_number'].transform('max')
+
 
         # to select the nb_pred standing
-        print(ibes['nb_pred_so_far'].describe())
+        print(ibes['pred_number'].describe())
         input_size = len(feat_all)
         input_std_size = len(feat_std)
         input_simple_size = len(feat_simple)
@@ -63,13 +78,18 @@ for perc_to_remove in [1,2,5,10,20]:
         all_values = np.zeros(shape=(0, max_pred_standing)).astype(np.float32)
         all_actual = np.zeros(shape=(0)).astype(np.float32)
 
-        for k in range(5, 67):
+        for k in range(5, ibes['pred_number'].max()):
             print('-----------------', k, '------------------')
             start_time = time.time()
+            # ibes_small = ibes.copy()
+            # feat_name =feat_std
+            # 3995/7288
+            # ibes_input = ibes_original.copy()
+            # ibes_input = ibes.copy()
 
-
-            def create_the_mat(k, feat_name):
-                temp = ibes[(ibes['pred_number'] > k - max_pred_standing) & (ibes['pred_number'] <= k) & (ibes['max'] >= k)].copy()
+            def create_the_mat(k, feat_name,ibes_input):
+                # temp = ibes[(ibes['pred_number'] > k - max_pred_standing) & (ibes['pred_number'] <= k) & (ibes['max'] >= k)].copy()
+                temp = ibes_input[(ibes_input['pred_number'] > k - max_pred_standing) & (ibes_input['pred_number'] <= k) & (ibes_input['max'] >= k)].copy()
                 temp = temp[feat_name + ['value', 'actual', 'group_id'] + ['tic', 'andate', 'tgdate', 'consensus_mean', 'consensus_median', 'id']]
 
                 g = temp.groupby('group_id').cumcount()
@@ -79,7 +99,6 @@ for perc_to_remove in [1,2,5,10,20]:
                        .apply(lambda x: x.values.tolist())
                        .tolist())
                 mat = np.array(mat)
-                mat.shape
 
                 # first we remove the last 6 ones that are for comparing consenus and solutions
                 mat_sol_ = mat[:, :, (len(feat_name) + 2):]
@@ -107,18 +126,19 @@ for perc_to_remove in [1,2,5,10,20]:
                 mat_actual_ = np.nan_to_num(mat_actual_.astype(np.float32))
                 # mat_sol_ = np.nan_to_num(mat_sol_).astype(np.float32)
 
+
                 return mat_values_, mat_actual_, mat_feat_, mat_sol_
 
 
             # first we do the simple feat, here we also do all the non-feat related one
-            mat_values, mat_actual, mat_feat, mat_sol = create_the_mat(k=k, feat_name=feat_simple)
+            mat_values, mat_actual, mat_feat, mat_sol = create_the_mat(k=k, feat_name=feat_simple,ibes_input=ibes.copy())
             all_feats_simple = np.concatenate((all_feats_simple, mat_feat), axis=0)
             all_values = np.concatenate((all_values, mat_values), axis=0)
             all_actual = np.concatenate((all_actual, mat_actual))
             all_sol = np.concatenate((all_sol, mat_sol), axis=0)
 
             # now the std that are not std
-            mat_values, mat_actual, mat_feat, mat_sol = create_the_mat(k=k, feat_name=feat_std)
+            mat_values, mat_actual, mat_feat, mat_sol = create_the_mat(k=k, feat_name=feat_std,ibes_input=ibes.copy())
             all_feats_std_original = np.concatenate((all_feats_std_original, mat_feat), axis=0)
 
             # finally we std the feats
@@ -175,3 +195,5 @@ for perc_to_remove in [1,2,5,10,20]:
         #
         #
         #
+
+print("xxxx-end")

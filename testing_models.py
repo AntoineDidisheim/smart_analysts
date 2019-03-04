@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from ml_models import LinearAggregator
 from ml_models import MultipleLayerAggregator
+import statsmodels.formula.api as smf
 from loader import Loader
 import time
 import tensorflow as tf
@@ -40,13 +41,17 @@ sol_mat = sol_mat[ind_test,:]
 # model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
 # model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_best")
 
+model_name = 'graph1'
+model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,500], name=model_name,summary_type='graph')
+
+
 # model_name  = 'l200l100l50t4_relu_all_rate1_batch5000_'
 # model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[200,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_try")
 
 
-
-model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
-model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_try")
+#
+# model_name  = 'l500l250l100l50_relu_all_rate1_batch10000_'
+# model = MultipleLayerAggregator(start_rate=1,input_size=30, nb_pred_standing=15, rate_of_saving=1,layer_width=[500,250,100,50], layer_types=[tf.nn.relu], name=model_name,summary_type="current_try")
 
 
 model.load()
@@ -61,11 +66,7 @@ model.load()
 
 # pred = model.pred_simple(test_actual=actual_mat, test_x=feature_mat, test_values=values_mat)
 
-f = model.pred_simple(test_actual=actual_mat,
-                          test_x=feature_mat,
-                          test_values=values_mat)
-
-
+f = model.pred_simple(test_actual=actual_mat,test_x=feature_mat,test_values=values_mat)
 
 df = pd.DataFrame(sol_mat,columns=['tic','andate','tgdate','consensus_mean','consensus_median','id'])
 
@@ -111,3 +112,61 @@ print('median consensus', err_median_abs)
 print('model           ', err_model_abs)
 print('improvement     ', np.round(  (1-err_model_abs/min(err_median_abs,err_mean_abs))*100,2), '%')
 
+import scipy
+
+df['consensus_median_error'] = (df['consensus_median']-df['actual']).abs()
+df['pred_error'] = (df['pred']-df['actual']).abs()
+
+scipy.stats.ttest_ind(df['consensus_median_error'],df['pred_error'])
+
+
+df.head()
+smf.ols(data=df,formula='actual~consensus_median+consensus_mean').fit().summary()
+smf.ols(data=df,formula='actual~consensus_median+consensus_mean+pred').fit().summary()
+
+
+df['bench'] = (df['consensus_median']-df['consensus_mean'].mean())/df['consensus_mean'].std()
+df['pred_s'] = (df['pred']-df['pred'].mean())/df['pred'].std()
+
+
+smf.ols(data=df,formula='actual~bench').fit().summary()
+smf.ols(data=df,formula='actual~bench+pred').fit().summary()
+
+r1=smf.ols(data=df,formula='actual~bench').fit().rsquared_adj
+r2=smf.ols(data=df,formula='actual~bench+pred').fit().rsquared_adj
+
+print("r_imp",(r2-r1)/r2)
+
+
+df['bench'] = (df['consensus_mean']-df['actual']).abs()
+df['vec'] = (df['pred']-df['actual']).abs()
+df[['bench','vec']].describe()
+
+# a=0.004108424423540615
+# b=3.7e-3
+# a/b
+
+
+start_date=df.andate.min()
+
+df = Loader.merge_results_df_with_price_actuals(df=df,date_min=start_date)
+
+
+
+
+df['pred_error'] = (df['pred']-df['actual']).abs()
+df['c_mean_error'] = (df['consensus_mean']-df['actual']).abs()
+df['c_median_error'] = (df['consensus_median']-df['actual']).abs()
+
+mean_res=df[['consensus_mean_error','consensus_median_error','pred_error']].mean()
+print(mean_res)
+
+
+
+smf.ols(data=df,formula='actual~consensus_median_reg').fit().summary()
+smf.ols(data=df,formula='actual~consensus_median_reg+pred_reg').fit().summary()
+
+r1=smf.ols(data=df,formula='actual~consensus_mean_reg').fit().rsquared_adj
+r2=smf.ols(data=df,formula='actual~consensus_mean_reg+pred_reg').fit().rsquared_adj
+print('original r',np.round(r1,4), 'improved r', np.round(r2,4))
+print("r_imp",(r2-r1)/r2)
